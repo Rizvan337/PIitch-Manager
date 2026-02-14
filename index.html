@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Pitch Manager | Offline Pro</title>
+    
+    <!-- Tailwind via CDN (Note: For 100% offline, you'd usually download this, 
+         but the PWA cache logic below will handle it once loaded once) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        .pitch-gradient {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        }
+
+        .timer-display { font-variant-numeric: tabular-nums; }
+
+        @keyframes pulse-red {
+            0%, 100% { background-color: #ef4444; }
+            50% { background-color: #7f1d1d; }
+        }
+
+        .timer-finished { animation: pulse-red 1s infinite; color: white !important; }
+
+        .goal-btn {
+            box-shadow: 0 4px 0 rgb(5, 150, 105);
+            transition: transform 0.1s;
+        }
+        .goal-btn:active {
+            box-shadow: 0 0 0 transparent;
+            transform: translateY(4px);
+        }
+
+        /* Prevent pull-to-refresh on mobile */
+        html, body {
+            overscroll-behavior-y: contain;
+        }
+    </style>
+</head>
+<body class="min-h-screen pb-24">
+
+    <!-- Header -->
+    <header class="pitch-gradient text-white p-6 shadow-lg sticky top-0 z-40">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold tracking-tight">Pitch Manager</h1>
+                <p id="offlineStatus" class="text-emerald-400 text-[10px] font-bold uppercase tracking-widest">Ready Offline</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="shuffleAllTeams()" class="bg-indigo-600 text-white p-3 rounded-xl shadow-lg active:scale-90 transition-transform">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Timer Bar -->
+    <div class="bg-white border-b border-slate-200 sticky top-[84px] z-30 shadow-sm">
+        <div class="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+            <div id="timerBox" class="flex flex-col">
+                <span id="matchTimer" class="timer-display text-3xl font-black text-slate-800 leading-none">08:00</span>
+                <span class="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1">Match Clock</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <select id="durationSelect" onchange="resetTimer()" class="bg-slate-100 border-none rounded-lg text-xs font-bold px-2 py-2 outline-none">
+                    <option value="5">5 Min</option>
+                    <option value="8" selected>8 Min</option>
+                    <option value="10">10 Min</option>
+                </select>
+                <button id="timerToggle" onclick="toggleTimer()" class="bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md active:scale-95">START</button>
+            </div>
+        </div>
+        <div class="w-full h-1 bg-slate-100">
+            <div id="timerProgress" class="h-full bg-emerald-500 transition-all duration-1000" style="width: 100%"></div>
+        </div>
+    </div>
+
+    <main class="max-w-md mx-auto px-4 space-y-6 mt-6">
+        <!-- Add Team -->
+        <section class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+            <div class="flex gap-2">
+                <input type="text" id="teamInput" placeholder="Team Name..." class="flex-1 bg-slate-50 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                <button onclick="addTeam()" class="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold text-sm">Add</button>
+            </div>
+        </section>
+
+        <!-- Pitch -->
+        <section>
+            <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3 px-1">On Pitch</h2>
+            <div id="playingContainer" class="space-y-4"></div>
+        </section>
+
+        <!-- Queue -->
+        <section>
+            <div class="flex justify-between items-center mb-3 px-1">
+                <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider">Queue</h2>
+                <span id="queueCount" class="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">0</span>
+            </div>
+            <div id="queueContainer" class="space-y-3"></div>
+        </section>
+
+        <button onclick="resetAll()" class="w-full py-4 text-slate-400 text-xs font-bold uppercase tracking-widest">Clear All</button>
+    </main>
+
+    <script>
+        // --- APP LOGIC ---
+        let teams = [];
+        let timerInterval;
+        let timeLeft = 480; 
+        let isTimerRunning = false;
+        let totalDuration = 480;
+
+        // Load data from localStorage (Offline Persistence)
+        if(localStorage.getItem('pitchTeams')) {
+            teams = JSON.parse(localStorage.getItem('pitchTeams'));
+        }
+
+        function saveData() {
+            localStorage.setItem('pitchTeams', JSON.stringify(teams));
+        }
+
+        function addTeam() {
+            const input = document.getElementById('teamInput');
+            const name = input.value.trim();
+            if (!name) return;
+            teams.push({ id: Date.now() + Math.random(), name, status: 'waiting', goals: 0 });
+            input.value = '';
+            autoFillPitch();
+            saveData();
+            render();
+        }
+
+        function autoFillPitch() {
+            let playing = teams.filter(t => t.status === 'playing');
+            if (playing.length < 2) {
+                const waiting = teams.filter(t => t.status === 'waiting');
+                const needed = 2 - playing.length;
+                for (let i = 0; i < needed; i++) {
+                    if (waiting[i]) {
+                        waiting[i].status = 'playing';
+                        waiting[i].goals = 0;
+                    }
+                }
+            }
+        }
+
+        function toggleTimer() {
+            if (isTimerRunning) stopTimer();
+            else startTimer();
+        }
+
+        function startTimer() {
+            isTimerRunning = true;
+            document.getElementById('timerToggle').innerText = "PAUSE";
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                if (timeLeft <= 0) {
+                    stopTimer();
+                    document.getElementById('timerBox').classList.add('timer-finished');
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            isTimerRunning = false;
+            clearInterval(timerInterval);
+            document.getElementById('timerToggle').innerText = "START";
+        }
+
+        function resetTimer() {
+            stopTimer();
+            timeLeft = parseInt(document.getElementById('durationSelect').value) * 60;
+            totalDuration = timeLeft;
+            document.getElementById('timerBox').classList.remove('timer-finished');
+            updateTimerDisplay();
+        }
+
+        function updateTimerDisplay() {
+            const mins = Math.floor(timeLeft / 60);
+            const secs = timeLeft % 60;
+            document.getElementById('matchTimer').innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            document.getElementById('timerProgress').style.width = `${(timeLeft / totalDuration) * 100}%`;
+        }
+
+        function addGoal(teamId) {
+            const team = teams.find(t => t.id === teamId);
+            if (!team) return;
+            team.goals++;
+            if (team.goals >= 2) handleWin(teamId);
+            else { saveData(); render(); }
+        }
+
+        function handleWin(winnerId) {
+            const playing = teams.filter(t => t.status === 'playing');
+            const loser = playing.find(t => t.id !== winnerId);
+            const winner = teams.find(t => t.id === winnerId);
+
+            if (loser) {
+                loser.status = 'waiting';
+                loser.goals = 0;
+                teams.push(teams.splice(teams.findIndex(t => t.id === loser.id), 1)[0]);
+            }
+            if (winner) winner.goals = 0;
+
+            resetTimer();
+            autoFillPitch();
+            saveData();
+            render();
+        }
+
+        function shuffleAllTeams() {
+            teams.forEach(t => { t.status = 'waiting'; t.goals = 0; });
+            for (let i = teams.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [teams[i], teams[j]] = [teams[j], teams[i]];
+            }
+            autoFillPitch();
+            resetTimer();
+            saveData();
+            render();
+        }
+
+        function resetAll() {
+            if (confirm('Reset tournament?')) {
+                teams = [];
+                saveData();
+                render();
+            }
+        }
+
+        function render() {
+            const p = document.getElementById('playingContainer');
+            const q = document.getElementById('queueContainer');
+            const playing = teams.filter(t => t.status === 'playing');
+            const waiting = teams.filter(t => t.status === 'waiting');
+
+            document.getElementById('queueCount').innerText = waiting.length;
+
+            p.innerHTML = playing.length ? playing.map(t => `
+                <div class="bg-white p-4 rounded-3xl shadow-sm border flex justify-between items-center">
+                    <div>
+                        <h3 class="font-black text-slate-800">${t.name}</h3>
+                        <p class="text-3xl font-black text-indigo-600">${t.goals}</p>
+                    </div>
+                    <button onclick="addGoal(${t.id})" class="goal-btn h-16 w-16 bg-emerald-500 text-white rounded-2xl font-black text-3xl">+</button>
+                </div>
+            `).join('') : '<div class="empty-state p-8 rounded-2xl text-center text-slate-400">Add teams</div>';
+
+            q.innerHTML = waiting.map((t, i) => `
+                <div class="bg-white p-3 rounded-xl border flex justify-between items-center">
+                    <span class="text-sm font-bold text-slate-600">${i+1}. ${t.name}</span>
+                    <button onclick="teams = teams.filter(x => x.id !== ${t.id}); saveData(); render();" class="text-slate-300">×</button>
+                </div>
+            `).join('');
+        }
+
+        render();
+
+        // --- OFFLINE PWA MAGIC ---
+        // Registering a simple Service Worker inside the same file
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                const CACHE_NAME = 'pitch-v1';
+                const ASSETS = [
+                    '/',
+                    window.location.href,
+                    'https://cdn.tailwindcss.com'
+                ];
+                self.addEventListener('install', e => {
+                    e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
+                });
+                self.addEventListener('fetch', e => {
+                    e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+                });
+            `;
+            const blob = new Blob([swCode], {type: 'application/javascript'});
+            navigator.serviceWorker.register(URL.createObjectURL(blob));
+        }
+    </script>
+</body>
+</html>
