@@ -2,51 +2,57 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Pitch Manager | Offline Pro</title>
-    
-    <!-- Tailwind via CDN (Note: For 100% offline, you'd usually download this, 
-         but the PWA cache logic below will handle it once loaded once) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pitch Manager | Goal Limit & Timer</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
         
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
             touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
-            user-select: none;
         }
 
         .pitch-gradient {
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
         }
 
-        .timer-display { font-variant-numeric: tabular-nums; }
+        .team-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .timer-display {
+            font-variant-numeric: tabular-nums;
+        }
 
         @keyframes pulse-red {
             0%, 100% { background-color: #ef4444; }
             50% { background-color: #7f1d1d; }
         }
 
-        .timer-finished { animation: pulse-red 1s infinite; color: white !important; }
+        .timer-finished {
+            animation: pulse-red 1s infinite;
+            color: white !important;
+        }
 
         .goal-btn {
             box-shadow: 0 4px 0 rgb(5, 150, 105);
-            transition: transform 0.1s;
         }
         .goal-btn:active {
             box-shadow: 0 0 0 transparent;
             transform: translateY(4px);
         }
 
-        /* Prevent pull-to-refresh on mobile */
-        html, body {
-            overscroll-behavior-y: contain;
+        .shuffling {
+            animation: shuffle-anim 0.4s ease-in-out;
+        }
+
+        @keyframes shuffle-anim {
+            0% { transform: translateY(0); opacity: 1; }
+            50% { transform: translateY(10px); opacity: 0.5; }
+            100% { transform: translateY(0); opacity: 1; }
         }
     </style>
 </head>
@@ -57,19 +63,17 @@
         <div class="max-w-md mx-auto flex justify-between items-center">
             <div>
                 <h1 class="text-xl font-bold tracking-tight">Pitch Manager</h1>
-                <p id="offlineStatus" class="text-emerald-400 text-[10px] font-bold uppercase tracking-widest">Ready Offline</p>
+                <p class="text-slate-400 text-xs">First to 2 Goals Wins</p>
             </div>
-            <div class="flex gap-2">
-                <button onclick="shuffleAllTeams()" class="bg-indigo-600 text-white p-3 rounded-xl shadow-lg active:scale-90 transition-transform">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
-            </div>
+            <button onclick="shuffleAllTeams()" class="bg-indigo-600 text-white p-3 rounded-xl shadow-lg hover:rotate-180 transition-transform duration-500 active:scale-90">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </button>
         </div>
     </header>
 
-    <!-- Timer Bar -->
+    <!-- Timer & Controls Bar -->
     <div class="bg-white border-b border-slate-200 sticky top-[84px] z-30 shadow-sm">
         <div class="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
             <div id="timerBox" class="flex flex-col">
@@ -81,67 +85,176 @@
                     <option value="5">5 Min</option>
                     <option value="8" selected>8 Min</option>
                     <option value="10">10 Min</option>
+                    <option value="12">12 Min</option>
                 </select>
-                <button id="timerToggle" onclick="toggleTimer()" class="bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md active:scale-95">START</button>
+                <button id="timerToggle" onclick="toggleTimer()" class="bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md active:scale-95 transition-all">
+                    START
+                </button>
             </div>
         </div>
+        <!-- Progress Bar -->
         <div class="w-full h-1 bg-slate-100">
             <div id="timerProgress" class="h-full bg-emerald-500 transition-all duration-1000" style="width: 100%"></div>
         </div>
     </div>
 
     <main class="max-w-md mx-auto px-4 space-y-6 mt-6">
+        
         <!-- Add Team -->
         <section class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
             <div class="flex gap-2">
-                <input type="text" id="teamInput" placeholder="Team Name..." class="flex-1 bg-slate-50 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
-                <button onclick="addTeam()" class="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold text-sm">Add</button>
+                <input type="text" id="teamInput" placeholder="New Team Name..." 
+                    class="flex-1 bg-slate-50 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm">
+                <button onclick="addTeam()" 
+                    class="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-colors text-sm">
+                    Add
+                </button>
             </div>
         </section>
 
-        <!-- Pitch -->
-        <section>
-            <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3 px-1">On Pitch</h2>
-            <div id="playingContainer" class="space-y-4"></div>
-        </section>
-
-        <!-- Queue -->
+        <!-- On Pitch -->
         <section>
             <div class="flex justify-between items-center mb-3 px-1">
-                <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider">Queue</h2>
-                <span id="queueCount" class="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">0</span>
+                <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    On Pitch (2 Goals = Win)
+                </h2>
+                <button onclick="handleDraw()" id="drawBtn" class="hidden text-[10px] font-black text-amber-600 border border-amber-200 bg-amber-50 px-3 py-1 rounded-full uppercase">Draw: Both Out</button>
             </div>
-            <div id="queueContainer" class="space-y-3"></div>
+            <div id="playingContainer" class="space-y-4">
+                <!-- Content injected by JS -->
+            </div>
         </section>
 
-        <button onclick="resetAll()" class="w-full py-4 text-slate-400 text-xs font-bold uppercase tracking-widest">Clear All</button>
+        <!-- Waiting List -->
+        <section>
+            <div class="flex justify-between items-center mb-3 px-1">
+                <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider">Waiting List</h2>
+                <span id="queueCount" class="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">0</span>
+            </div>
+            <div id="queueContainer" class="space-y-3">
+                <!-- Content injected by JS -->
+            </div>
+        </section>
+
+        <button onclick="resetAll()" class="w-full py-4 text-slate-400 text-xs font-bold uppercase tracking-widest hover:text-red-500 transition-colors">
+            Reset Tournament
+        </button>
     </main>
 
     <script>
-        // --- APP LOGIC ---
         let teams = [];
         let timerInterval;
         let timeLeft = 480; 
         let isTimerRunning = false;
         let totalDuration = 480;
 
-        // Load data from localStorage (Offline Persistence)
-        if(localStorage.getItem('pitchTeams')) {
-            teams = JSON.parse(localStorage.getItem('pitchTeams'));
-        }
-
-        function saveData() {
-            localStorage.setItem('pitchTeams', JSON.stringify(teams));
-        }
-
         function addTeam() {
             const input = document.getElementById('teamInput');
             const name = input.value.trim();
             if (!name) return;
-            teams.push({ id: Date.now() + Math.random(), name, status: 'waiting', goals: 0 });
+
+            teams.push({
+                id: Date.now() + Math.random(),
+                name: name,
+                status: 'waiting',
+                goals: 0
+            });
             input.value = '';
             autoFillPitch();
-            saveData();
+            render();
+        }
+
+        function shuffleAllTeams() {
+            if (teams.length < 2) return;
+            stopTimer();
+            resetTimer();
+            
+            const containers = [document.getElementById('playingContainer'), document.getElementById('queueContainer')];
+            containers.forEach(c => c.classList.add('shuffling'));
+
+            setTimeout(() => {
+                teams.forEach(t => {
+                    t.status = 'waiting';
+                    t.goals = 0;
+                });
+                for (let i = teams.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [teams[i], teams[j]] = [teams[j], teams[i]];
+                }
+                teams[0].status = 'playing';
+                if (teams[1]) teams[1].status = 'playing';
+
+                containers.forEach(c => c.classList.remove('shuffling'));
+                render();
+            }, 300);
+        }
+
+        // TIMER LOGIC
+        function toggleTimer() {
+            if (isTimerRunning) stopTimer();
+            else startTimer();
+        }
+
+        function startTimer() {
+            if (timeLeft <= 0) resetTimer();
+            isTimerRunning = true;
+            document.getElementById('timerToggle').innerText = "PAUSE";
+            document.getElementById('timerToggle').classList.replace('bg-emerald-500', 'bg-slate-800');
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                if (timeLeft <= 0) {
+                    stopTimer();
+                    document.getElementById('timerBox').classList.add('timer-finished');
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            isTimerRunning = false;
+            clearInterval(timerInterval);
+            document.getElementById('timerToggle').innerText = "START";
+            document.getElementById('timerToggle').classList.replace('bg-slate-800', 'bg-emerald-500');
+        }
+
+        function resetTimer() {
+            stopTimer();
+            const mins = parseInt(document.getElementById('durationSelect').value);
+            totalDuration = mins * 60;
+            timeLeft = totalDuration;
+            document.getElementById('timerBox').classList.remove('timer-finished');
+            updateTimerDisplay();
+        }
+
+        function updateTimerDisplay() {
+            const mins = Math.floor(timeLeft / 60);
+            const secs = timeLeft % 60;
+            document.getElementById('matchTimer').innerText = 
+                `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            
+            const percentage = (timeLeft / totalDuration) * 100;
+            document.getElementById('timerProgress').style.width = `${percentage}%`;
+            
+            const bar = document.getElementById('timerProgress');
+            if (percentage < 20) bar.className = "h-full bg-red-500 transition-all duration-1000";
+            else if (percentage < 50) bar.className = "h-full bg-amber-500 transition-all duration-1000";
+            else bar.className = "h-full bg-emerald-500 transition-all duration-1000";
+        }
+
+        function addGoal(teamId) {
+            const team = teams.find(t => t.id === teamId);
+            if (!team || team.status !== 'playing') return;
+
+            team.goals++;
+            
+            if (team.goals >= 2) {
+                // Instant Win Logic
+                setTimeout(() => {
+                    handleWin(teamId);
+                }, 300);
+            }
             render();
         }
 
@@ -159,139 +272,110 @@
             }
         }
 
-        function toggleTimer() {
-            if (isTimerRunning) stopTimer();
-            else startTimer();
-        }
-
-        function startTimer() {
-            isTimerRunning = true;
-            document.getElementById('timerToggle').innerText = "PAUSE";
-            timerInterval = setInterval(() => {
-                timeLeft--;
-                updateTimerDisplay();
-                if (timeLeft <= 0) {
-                    stopTimer();
-                    document.getElementById('timerBox').classList.add('timer-finished');
-                }
-            }, 1000);
-        }
-
-        function stopTimer() {
-            isTimerRunning = false;
-            clearInterval(timerInterval);
-            document.getElementById('timerToggle').innerText = "START";
-        }
-
-        function resetTimer() {
-            stopTimer();
-            timeLeft = parseInt(document.getElementById('durationSelect').value) * 60;
-            totalDuration = timeLeft;
-            document.getElementById('timerBox').classList.remove('timer-finished');
-            updateTimerDisplay();
-        }
-
-        function updateTimerDisplay() {
-            const mins = Math.floor(timeLeft / 60);
-            const secs = timeLeft % 60;
-            document.getElementById('matchTimer').innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-            document.getElementById('timerProgress').style.width = `${(timeLeft / totalDuration) * 100}%`;
-        }
-
-        function addGoal(teamId) {
-            const team = teams.find(t => t.id === teamId);
-            if (!team) return;
-            team.goals++;
-            if (team.goals >= 2) handleWin(teamId);
-            else { saveData(); render(); }
-        }
-
         function handleWin(winnerId) {
             const playing = teams.filter(t => t.status === 'playing');
-            const loser = playing.find(t => t.id !== winnerId);
             const winner = teams.find(t => t.id === winnerId);
-
+            const loser = playing.find(t => t.id !== winnerId);
+            
+            // Loser goes to back of master list
             if (loser) {
                 loser.status = 'waiting';
                 loser.goals = 0;
-                teams.push(teams.splice(teams.findIndex(t => t.id === loser.id), 1)[0]);
+                const loserIdx = teams.findIndex(t => t.id === loser.id);
+                const [loserTeam] = teams.splice(loserIdx, 1);
+                teams.push(loserTeam);
             }
-            if (winner) winner.goals = 0;
 
-            resetTimer();
+            // Winner stays, reset their goals for next game
+            if (winner) {
+                winner.goals = 0;
+            }
+
+            resetTimer(); 
             autoFillPitch();
-            saveData();
             render();
         }
 
-        function shuffleAllTeams() {
-            teams.forEach(t => { t.status = 'waiting'; t.goals = 0; });
-            for (let i = teams.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [teams[i], teams[j]] = [teams[j], teams[i]];
-            }
-            autoFillPitch();
+        function handleDraw() {
+            const playing = teams.filter(t => t.status === 'playing');
+            playing.forEach(team => {
+                const idx = teams.findIndex(t => t.id === team.id);
+                const [removed] = teams.splice(idx, 1);
+                removed.status = 'waiting';
+                removed.goals = 0;
+                teams.push(removed);
+            });
             resetTimer();
-            saveData();
+            autoFillPitch();
+            render();
+        }
+
+        function removeTeam(id) {
+            teams = teams.filter(t => t.id !== id);
+            autoFillPitch();
             render();
         }
 
         function resetAll() {
-            if (confirm('Reset tournament?')) {
+            if (confirm('Reset everything?')) {
                 teams = [];
-                saveData();
+                resetTimer();
                 render();
             }
         }
 
         function render() {
-            const p = document.getElementById('playingContainer');
-            const q = document.getElementById('queueContainer');
+            const pContainer = document.getElementById('playingContainer');
+            const qContainer = document.getElementById('queueContainer');
+            const drawBtn = document.getElementById('drawBtn');
             const playing = teams.filter(t => t.status === 'playing');
             const waiting = teams.filter(t => t.status === 'waiting');
 
             document.getElementById('queueCount').innerText = waiting.length;
+            drawBtn.style.display = (playing.length === 2) ? 'block' : 'none';
 
-            p.innerHTML = playing.length ? playing.map(t => `
-                <div class="bg-white p-4 rounded-3xl shadow-sm border flex justify-between items-center">
-                    <div>
-                        <h3 class="font-black text-slate-800">${t.name}</h3>
-                        <p class="text-3xl font-black text-indigo-600">${t.goals}</p>
+            if (playing.length === 0) {
+                pContainer.innerHTML = `<div class="empty-state rounded-2xl p-8 text-center text-slate-400 text-sm font-medium">Add teams to begin</div>`;
+            } else {
+                pContainer.innerHTML = playing.map(t => `
+                    <div class="team-card bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex justify-between items-center ${t.goals >= 2 ? 'ring-4 ring-emerald-500' : ''}">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center text-xl font-bold">
+                                ${t.goals}
+                            </div>
+                            <div>
+                                <h3 class="font-black text-slate-800 leading-tight">${t.name}</h3>
+                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">${t.goals >= 2 ? 'Winner!' : 'Current Team'}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="addGoal(${t.id})" class="goal-btn h-14 w-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center font-black text-2xl transition-all">
+                                +
+                            </button>
+                        </div>
                     </div>
-                    <button onclick="addGoal(${t.id})" class="goal-btn h-16 w-16 bg-emerald-500 text-white rounded-2xl font-black text-3xl">+</button>
-                </div>
-            `).join('') : '<div class="empty-state p-8 rounded-2xl text-center text-slate-400">Add teams</div>';
+                `).join('');
+            }
 
-            q.innerHTML = waiting.map((t, i) => `
-                <div class="bg-white p-3 rounded-xl border flex justify-between items-center">
-                    <span class="text-sm font-bold text-slate-600">${i+1}. ${t.name}</span>
-                    <button onclick="teams = teams.filter(x => x.id !== ${t.id}); saveData(); render();" class="text-slate-300">×</button>
-                </div>
-            `).join('');
+            if (waiting.length === 0) {
+                qContainer.innerHTML = `<div class="empty-state rounded-2xl p-8 text-center text-slate-400 text-sm">No teams in queue</div>`;
+            } else {
+                qContainer.innerHTML = waiting.map((t, index) => `
+                    <div class="team-card team-waiting bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border border-slate-50">
+                        <div class="flex items-center gap-3">
+                            <div class="text-[10px] font-black text-slate-400 bg-slate-100 w-6 h-6 rounded flex items-center justify-center">${index + 1}</div>
+                            <span class="font-medium text-slate-600">${t.name}</span>
+                        </div>
+                        <button onclick="removeTeam(${t.id})" class="text-slate-300 hover:text-red-400 p-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        </button>
+                    </div>
+                `).join('');
+            }
         }
 
-        render();
-
-        // --- OFFLINE PWA MAGIC ---
-        // Registering a simple Service Worker inside the same file
-        if ('serviceWorker' in navigator) {
-            const swCode = `
-                const CACHE_NAME = 'pitch-v1';
-                const ASSETS = [
-                    '/',
-                    window.location.href,
-                    'https://cdn.tailwindcss.com'
-                ];
-                self.addEventListener('install', e => {
-                    e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
-                });
-                self.addEventListener('fetch', e => {
-                    e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
-                });
-            `;
-            const blob = new Blob([swCode], {type: 'application/javascript'});
-            navigator.serviceWorker.register(URL.createObjectURL(blob));
-        }
+        document.getElementById('teamInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addTeam(); });
+        updateTimerDisplay();
     </script>
 </body>
 </html>
