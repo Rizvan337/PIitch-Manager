@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pitch Manager | Goal Limit & Timer</title>
+    <title>Pitch Manager | Match Timer & Rotation</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
@@ -12,7 +12,6 @@
             font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
             touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
         }
 
         .pitch-gradient {
@@ -23,8 +22,21 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        .team-active {
+            border-left: 4px solid #10b981;
+        }
+
+        .team-waiting {
+            border-left: 4px solid #f59e0b;
+        }
+
+        .empty-state {
+            border: 2px dashed #e2e8f0;
+        }
+
         .timer-display {
             font-variant-numeric: tabular-nums;
+            text-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
         }
 
         @keyframes pulse-red {
@@ -35,14 +47,6 @@
         .timer-finished {
             animation: pulse-red 1s infinite;
             color: white !important;
-        }
-
-        .goal-btn {
-            box-shadow: 0 4px 0 rgb(5, 150, 105);
-        }
-        .goal-btn:active {
-            box-shadow: 0 0 0 transparent;
-            transform: translateY(4px);
         }
 
         .shuffling {
@@ -63,7 +67,7 @@
         <div class="max-w-md mx-auto flex justify-between items-center">
             <div>
                 <h1 class="text-xl font-bold tracking-tight">Pitch Manager</h1>
-                <p class="text-slate-400 text-xs">First to 2 Goals Wins</p>
+                <p class="text-slate-400 text-xs">Fair Play & Live Timer</p>
             </div>
             <button onclick="shuffleAllTeams()" class="bg-indigo-600 text-white p-3 rounded-xl shadow-lg hover:rotate-180 transition-transform duration-500 active:scale-90">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -73,7 +77,7 @@
         </div>
     </header>
 
-    <!-- Timer & Controls Bar -->
+    <!-- Timer Bar -->
     <div class="bg-white border-b border-slate-200 sticky top-[84px] z-30 shadow-sm">
         <div class="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
             <div id="timerBox" class="flex flex-col">
@@ -103,10 +107,10 @@
         <!-- Add Team -->
         <section class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
             <div class="flex gap-2">
-                <input type="text" id="teamInput" placeholder="New Team Name..." 
-                    class="flex-1 bg-slate-50 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm">
+                <input type="text" id="teamInput" placeholder="Team Name..." 
+                    class="flex-1 bg-slate-50 border-none rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                 <button onclick="addTeam()" 
-                    class="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-colors text-sm">
+                    class="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold transition-colors">
                     Add
                 </button>
             </div>
@@ -116,24 +120,27 @@
         <section>
             <div class="flex justify-between items-center mb-3 px-1">
                 <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    On Pitch (2 Goals = Win)
+                    Currently Playing
                 </h2>
                 <button onclick="handleDraw()" id="drawBtn" class="hidden text-[10px] font-black text-amber-600 border border-amber-200 bg-amber-50 px-3 py-1 rounded-full uppercase">Draw: Both Out</button>
             </div>
-            <div id="playingContainer" class="space-y-4">
-                <!-- Content injected by JS -->
+            <div id="playingContainer" class="space-y-3">
+                <div class="empty-state rounded-2xl p-8 text-center text-slate-400">
+                    No teams on pitch
+                </div>
             </div>
         </section>
 
         <!-- Waiting List -->
         <section>
             <div class="flex justify-between items-center mb-3 px-1">
-                <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider">Waiting List</h2>
+                <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider">Waiting</h2>
                 <span id="queueCount" class="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">0</span>
             </div>
             <div id="queueContainer" class="space-y-3">
-                <!-- Content injected by JS -->
+                <div class="empty-state rounded-2xl p-8 text-center text-slate-400">
+                    Queue is empty
+                </div>
             </div>
         </section>
 
@@ -145,7 +152,7 @@
     <script>
         let teams = [];
         let timerInterval;
-        let timeLeft = 480; 
+        let timeLeft = 480; // 8 minutes in seconds
         let isTimerRunning = false;
         let totalDuration = 480;
 
@@ -157,8 +164,7 @@
             teams.push({
                 id: Date.now() + Math.random(),
                 name: name,
-                status: 'waiting',
-                goals: 0
+                status: 'waiting'
             });
             input.value = '';
             autoFillPitch();
@@ -174,10 +180,7 @@
             containers.forEach(c => c.classList.add('shuffling'));
 
             setTimeout(() => {
-                teams.forEach(t => {
-                    t.status = 'waiting';
-                    t.goals = 0;
-                });
+                teams.forEach(t => t.status = 'waiting');
                 for (let i = teams.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
                     [teams[i], teams[j]] = [teams[j], teams[i]];
@@ -192,8 +195,11 @@
 
         // TIMER LOGIC
         function toggleTimer() {
-            if (isTimerRunning) stopTimer();
-            else startTimer();
+            if (isTimerRunning) {
+                stopTimer();
+            } else {
+                startTimer();
+            }
         }
 
         function startTimer() {
@@ -237,25 +243,11 @@
             const percentage = (timeLeft / totalDuration) * 100;
             document.getElementById('timerProgress').style.width = `${percentage}%`;
             
+            // Change color as it runs low
             const bar = document.getElementById('timerProgress');
             if (percentage < 20) bar.className = "h-full bg-red-500 transition-all duration-1000";
             else if (percentage < 50) bar.className = "h-full bg-amber-500 transition-all duration-1000";
             else bar.className = "h-full bg-emerald-500 transition-all duration-1000";
-        }
-
-        function addGoal(teamId) {
-            const team = teams.find(t => t.id === teamId);
-            if (!team || team.status !== 'playing') return;
-
-            team.goals++;
-            
-            if (team.goals >= 2) {
-                // Instant Win Logic
-                setTimeout(() => {
-                    handleWin(teamId);
-                }, 300);
-            }
-            render();
         }
 
         function autoFillPitch() {
@@ -264,34 +256,22 @@
                 const waiting = teams.filter(t => t.status === 'waiting');
                 const needed = 2 - playing.length;
                 for (let i = 0; i < needed; i++) {
-                    if (waiting[i]) {
-                        waiting[i].status = 'playing';
-                        waiting[i].goals = 0;
-                    }
+                    if (waiting[i]) waiting[i].status = 'playing';
                 }
             }
         }
 
         function handleWin(winnerId) {
             const playing = teams.filter(t => t.status === 'playing');
-            const winner = teams.find(t => t.id === winnerId);
             const loser = playing.find(t => t.id !== winnerId);
-            
-            // Loser goes to back of master list
-            if (loser) {
-                loser.status = 'waiting';
-                loser.goals = 0;
-                const loserIdx = teams.findIndex(t => t.id === loser.id);
-                const [loserTeam] = teams.splice(loserIdx, 1);
-                teams.push(loserTeam);
-            }
+            if (!loser) return;
 
-            // Winner stays, reset their goals for next game
-            if (winner) {
-                winner.goals = 0;
-            }
+            loser.status = 'waiting';
+            const loserIdx = teams.findIndex(t => t.id === loser.id);
+            const [loserTeam] = teams.splice(loserIdx, 1);
+            teams.push(loserTeam);
 
-            resetTimer(); 
+            resetTimer(); // Reset clock for new challenger
             autoFillPitch();
             render();
         }
@@ -302,7 +282,6 @@
                 const idx = teams.findIndex(t => t.id === team.id);
                 const [removed] = teams.splice(idx, 1);
                 removed.status = 'waiting';
-                removed.goals = 0;
                 teams.push(removed);
             });
             resetTimer();
@@ -317,7 +296,7 @@
         }
 
         function resetAll() {
-            if (confirm('Reset everything?')) {
+            if (confirm('Clear all teams?')) {
                 teams = [];
                 resetTimer();
                 render();
@@ -338,27 +317,20 @@
                 pContainer.innerHTML = `<div class="empty-state rounded-2xl p-8 text-center text-slate-400 text-sm font-medium">Add teams to begin</div>`;
             } else {
                 pContainer.innerHTML = playing.map(t => `
-                    <div class="team-card bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex justify-between items-center ${t.goals >= 2 ? 'ring-4 ring-emerald-500' : ''}">
-                        <div class="flex items-center gap-4">
-                            <div class="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center text-xl font-bold">
-                                ${t.goals}
+                    <div class="team-card team-active bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-bold">
+                                ${t.name.charAt(0).toUpperCase()}
                             </div>
-                            <div>
-                                <h3 class="font-black text-slate-800 leading-tight">${t.name}</h3>
-                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">${t.goals >= 2 ? 'Winner!' : 'Current Team'}</p>
-                            </div>
+                            <span class="font-bold text-slate-800">${t.name}</span>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <button onclick="addGoal(${t.id})" class="goal-btn h-14 w-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center font-black text-2xl transition-all">
-                                +
-                            </button>
-                        </div>
+                        <button onclick="handleWin(${t.id})" class="text-xs bg-emerald-500 text-white px-5 py-2 rounded-lg font-bold active:scale-95 transition-all uppercase">Winner</button>
                     </div>
                 `).join('');
             }
 
             if (waiting.length === 0) {
-                qContainer.innerHTML = `<div class="empty-state rounded-2xl p-8 text-center text-slate-400 text-sm">No teams in queue</div>`;
+                qContainer.innerHTML = `<div class="empty-state rounded-2xl p-8 text-center text-slate-400 text-sm">No teams waiting</div>`;
             } else {
                 qContainer.innerHTML = waiting.map((t, index) => `
                     <div class="team-card team-waiting bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border border-slate-50">
